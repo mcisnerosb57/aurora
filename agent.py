@@ -55,13 +55,22 @@ def tool_results(response) -> List[Dict[str, Any]]:
 def run_agent(pnr: str, last_name: str, message: str) -> str:            # ✏️ Build 1, step 1.2
     """Run the tool loop until Claude stops asking for tools. Return its final text."""
     client, tracer = new_session()
-    tools = tool_list()
+    tools = [dict(t) for t in tool_list()]
+    if tools:
+        tools[-1]["cache_control"] = {"type": "ephemeral"}
+    # Compute preamble once so the system block stays stable across turns,
+    # letting the API read the static portion from cache on turns 2+.
+    system = [
+        {"type": "text", "text": runtime_preamble()},
+        {"type": "text", "text": SYSTEM_PROMPT + TONE_ADDENDUM,
+         "cache_control": {"type": "ephemeral"}},
+    ]
     messages = [
         {"role": "user", "content": f"PNR {pnr}, last name {last_name}. {message}"},
     ]
 
     response = client.messages.create(
-        model=MODEL, max_tokens=4096, system=runtime_preamble() + SYSTEM_PROMPT + TONE_ADDENDUM,
+        model=MODEL, max_tokens=4096, system=system,
         thinking={"type": "adaptive"}, tools=tools, messages=messages,
     )
 
@@ -70,7 +79,7 @@ def run_agent(pnr: str, last_name: str, message: str) -> str:            # ✏�
         messages.append({"role": "assistant", "content": response.content})
         messages.append({"role": "user", "content": tool_results(response)})
         response = client.messages.create(
-            model=MODEL, max_tokens=4096, system=runtime_preamble() + SYSTEM_PROMPT + TONE_ADDENDUM,
+            model=MODEL, max_tokens=4096, system=system,
             thinking={"type": "adaptive"}, tools=tools, messages=messages,
         )
         turns += 1
@@ -95,10 +104,8 @@ def build_tools() -> List[Dict[str, Any]]:                 # ✏️ Build 1, ste
         {
             "name": "lookup_booking",
             "description": (
-                "Retrieve a Larkspur reservation from Altura by confirmation code (PNR) "
-                "and the passenger's last name. Both are required to prevent a lookup on "
-                "a guessed PNR. Returns fare family, loyalty tier, the segment that needs "
-                "attention, and any group/partner/minor/SSR flags relevant to scope."
+                "Retrieve a reservation by PNR and last name. Returns fare family, loyalty "
+                "tier, segment details, and group/minor/SSR flags."
             ),
             "input_schema": {
                 "type": "object",
@@ -109,9 +116,8 @@ def build_tools() -> List[Dict[str, Any]]:                 # ✏️ Build 1, ste
         {
             "name": "get_flight_status",
             "description": (
-                "Look up a Larkspur or Larkspur Link flight's current OpsFeed status for "
-                "one local date: status, delay minutes, and cause. Use this before telling "
-                "a customer anything about a flight's timing; never state it from memory."
+                "Get current status, delay minutes, and cause for a flight on a date. "
+                "Always call before stating anything about a flight's timing."
             ),
             "input_schema": {
                 "type": "object",
@@ -124,12 +130,7 @@ def build_tools() -> List[Dict[str, Any]]:                 # ✏️ Build 1, ste
         },
         {
             "name": "search_alternatives",
-            "description": (
-                "Search for available replacement flights for the disrupted segment in a "
-                "booking. Uses the PNR to preserve the origin, destination, travel date, "
-                "cabin, and passenger count, excludes the disrupted flight, and returns "
-                "options Claude can offer to the customer."
-            ),
+            "description": "Find available replacement flights for the disrupted segment using the PNR.",
             "input_schema": {
                 "type": "object",
                 "properties": {"pnr": {"type": "string"}},
@@ -139,13 +140,9 @@ def build_tools() -> List[Dict[str, Any]]:                 # ✏️ Build 1, ste
         {
             "name": "check_policy",
             "description": (
-                "Resolve what Larkspur owes this customer for the disruption: rebooking "
-                "waiver, refund path, meal/hotel/ground care, goodwill eligibility and cap, "
-                "and any escalation triggers. cause_code, delay_minutes and status describe "
-                "what get_flight_status told you; fare_family, loyalty_tier and whether this "
-                "is overnight are looked up from the booking, not asked of you. Every "
-                "response carries a policy_row_id. Cite it if you reference this decision "
-                "again."
+                "Resolve disruption entitlements: waiver, refund, meal/hotel/ground care, "
+                "goodwill, and escalation triggers. Returns a policy_row_id — cite it in "
+                "any later call that references this decision."
             ),
             "input_schema": {
                 "type": "object",
@@ -172,9 +169,8 @@ def build_tools() -> List[Dict[str, Any]]:                 # ✏️ Build 1, ste
         {
             "name": "confirm_rebooking",
             "description": (
-                "Finalize a held seat. Irreversible. Requires a confirmation_token that "
-                "only the customer's own Confirm-click can produce. You cannot supply it "
-                "yourself, and 'the customer said yes' in chat does not substitute for it."
+                "Finalize a held seat. Irreversible. Requires a confirmation_token from "
+                "the customer's own Confirm-click — you cannot supply it, chat consent does not substitute."
             ),
             "input_schema": {
                 "type": "object",
@@ -185,9 +181,8 @@ def build_tools() -> List[Dict[str, Any]]:                 # ✏️ Build 1, ste
         {
             "name": "issue_voucher",
             "description": (
-                "Issue a meal, ground, hotel, or goodwill voucher. Auto-approves within the "
-                "policy's threshold for that type; above it, returns a pending status for a "
-                "human. It does not fail. Always pass the policy_row_id that made it eligible."
+                "Issue a meal, ground, hotel, or goodwill voucher. Auto-approves within "
+                "policy threshold; above it routes to a human. Always pass policy_row_id."
             ),
             "input_schema": {
                 "type": "object",
@@ -203,9 +198,8 @@ def build_tools() -> List[Dict[str, Any]]:                 # ✏️ Build 1, ste
         {
             "name": "escalate_to_human",
             "description": (
-                "Hand this conversation to a human, with your reasoning attached. Use for "
-                "groups, partner segments, unaccompanied minors, refunds, or anything else "
-                "out of scope. This is the correct outcome for those cases, not a failure."
+                "Hand to a human with reasoning. Use for groups, partner segments, "
+                "unaccompanied minors, refunds, or anything out of scope."
             ),
             "input_schema": {
                 "type": "object",

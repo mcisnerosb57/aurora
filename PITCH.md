@@ -9,6 +9,7 @@ Guardrail: Escala las reservas grupales a una persona; lo probamos con G2HL9V y 
 Next: Evaluar precisión, tono y coste por contacto antes de operar en producción.
 Still broken: No existe un control de tono de entrada; un mensaje abusivo todavía recibe una respuesta calmada y servicial.
 Lever: cost
+Caveat: Recortar descripciones de herramientas baja el costo de tokens de entrada pero no mide si Claude sigue eligiendo la herramienta correcta: la precisión de enrutamiento queda fuera del número.
 
 ## Priya asked
 
