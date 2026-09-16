@@ -13,7 +13,7 @@ Caveat: Recortar descripciones de herramientas baja el costo de tokens de entrad
 
 ## Priya asked
 
-Costs:
-Wrong:
-Runs it:
-Left out:
+Costs: Solo inferencia del modelo — infraestructura, revisión humana y canales de voz quedan fuera del número.
+Wrong: Un delay de 45 minutos que no activa ningún cupón cuesta lo mismo de procesar que una cancelación completa.
+Runs it: El equipo de operaciones de contacto digital que administra el chat de Larkspur.
+Left out: Los 223,000 contactos que los humanos siguen manejando (42%), el canal de voz completo, y las fallas de tono que aún llegan al cliente.
